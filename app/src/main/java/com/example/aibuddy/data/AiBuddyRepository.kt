@@ -2,9 +2,9 @@ package com.example.aibuddy.data
 
 import com.example.aibuddy.BuildConfig
 import com.google.ai.client.generativeai.GenerativeModel
-import com.google.ai.client.generativeai.type.generationConfig // Updated import
+import com.google.ai.client.generativeai.type.generationConfig
+import com.google.ai.client.generativeai.type.content // Added for systemInstruction
 
-// applicationContext is not directly needed for the new SDK initialization here
 class AiBuddyRepository {
 
     private val generativeModel: GenerativeModel
@@ -14,16 +14,20 @@ class AiBuddyRepository {
         // Updated GenerationConfig initialization
         val config = generationConfig {
             temperature = 0.9f
-            topK = 1 // Default is 16, but keeping user's original value
+            topK = 1 
             topP = 1f
-            maxOutputTokens = 2048
+            maxOutputTokens = 512 // Reduced max output tokens
         }
 
-        // Updated GenerativeModel initialization
+        val systemInstruction = content(role = "system") {
+            text("You are AiBuddy, an exceptionally friendly, empathetic, and curious AI companion. Your goal is to have engaging conversations. When the user tells you something, show genuine interest, ask follow-up questions to learn more about their thoughts or plans, and try to keep the conversation flowing naturally. Avoid generic conversation enders like 'Can I help you with anything else?'. Instead, try to build on what the user said. Keep your responses relatively concise, but prioritize being engaging and inquisitive over extreme brevity.")
+        }
+
         generativeModel = GenerativeModel(
-            modelName = "gemini-1.5-flash-latest", // Changed to a current model
+            modelName = "gemini-1.5-flash-latest",
             apiKey = geminiApiKey,
-            generationConfig = config
+            generationConfig = config,
+            systemInstruction = systemInstruction
         )
     }
 
