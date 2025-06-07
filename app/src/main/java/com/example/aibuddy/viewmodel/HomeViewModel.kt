@@ -9,6 +9,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.aibuddy.data.AiBuddyRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
+import android.os.Bundle
 import android.util.Log
 import java.util.Locale
 import kotlinx.coroutines.flow.StateFlow
@@ -20,6 +22,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), T
     private val repository: AiBuddyRepository = AiBuddyRepository()
 
     private var tts: TextToSpeech? = null
+    private val _isTtsSpeaking = MutableStateFlow(false)
+    val isTtsSpeaking: StateFlow<Boolean> = _isTtsSpeaking.asStateFlow()
 
     init {
         tts = TextToSpeech(application.applicationContext, this)
@@ -27,31 +31,62 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), T
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
-            val result = tts?.setLanguage(Locale.US) // Reverted to US English
+            val result = tts?.setLanguage(Locale.US)
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                 Log.e("TTS", "The Language (US English) specified is not supported or language data is missing.")
-                // Optionally, inform the user or try a device default locale
-                // tts?.setLanguage(Locale.getDefault())
             } else {
                 Log.i("TTS", "TTS Initialized successfully with US English.")
             }
+            tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {
+                    _isTtsSpeaking.value = true
+                    Log.d("TTS", "onStart: $utteranceId")
+                }
+
+                override fun onDone(utteranceId: String?) {
+                    _isTtsSpeaking.value = false
+                    Log.d("TTS", "onDone: $utteranceId")
+                }
+
+                @Deprecated("deprecated")
+                override fun onError(utteranceId: String?) {
+                    _isTtsSpeaking.value = false
+                    Log.e("TTS", "onError (deprecated): $utteranceId")
+                }
+
+                override fun onError(utteranceId: String?, errorCode: Int) {
+                    _isTtsSpeaking.value = false
+                    Log.e("TTS", "onError: $utteranceId, errorCode: $errorCode")
+                }
+            })
         } else {
             Log.e("TTS", "TTS Initialization Failed!")
         }
     }
 
     private fun speak(text: String) {
-        if (tts?.isSpeaking == true) {
-            tts?.stop() // Stop current speech before starting new one
+        if (text.isBlank()) return
+
+        // Stop any current speech before starting a new one.
+        // This also helps if onDone/onError wasn't called for a previous utterance.
+        tts?.stop() 
+        _isTtsSpeaking.value = true // Set true immediately, onStart might have a slight delay
+
+        val utteranceId = System.currentTimeMillis().toString()
+        val params = Bundle().apply {
+            putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
         }
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+        Log.d("TTS", "Attempting to speak: '$text' with ID: $utteranceId")
+        val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+        if (result == TextToSpeech.ERROR) {
+            Log.e("TTS", "Error in tts.speak for utteranceId $utteranceId")
+            _isTtsSpeaking.value = false // Reset if speak call itself fails
+        }
     }
 
     fun stopSpeaking() {
         tts?.stop()
-        // Optionally, you might want to clear the current aiBuddyResponse
-        // if stopping speech means you also want to clear the displayed text.
-        // For now, it just stops the audio.
+        _isTtsSpeaking.value = false // Manually update state as onDone might not be called
         Log.i("TTS", "TTS manually stopped by user.")
     }
 
