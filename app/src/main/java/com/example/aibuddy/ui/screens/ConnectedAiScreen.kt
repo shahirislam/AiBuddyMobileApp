@@ -63,7 +63,6 @@ fun ConnectedAiScreen(
     val speechRecognizer = remember { SpeechRecognizer.createSpeechRecognizer(context) }
     var localPermissionLauncherState by remember { mutableStateOf<ActivityResultLauncher<String>?>(null) }
 
-    // Define helper functions first
     fun createSpeechIntent(): Intent {
         return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -73,9 +72,7 @@ fun ConnectedAiScreen(
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
         }
     }
-    
-    // Define startListeningInternal before permissionLauncherInstance and other effects that use it
-    // Note: This function now uses localPermissionLauncherState
+
     fun startListeningInternal() {
         if (!isConnected || !isListeningUserIntent || isTtsActuallySpeaking) {
             if(isTtsActuallySpeaking) Log.d("STT", "Blocked STT start because TTS is speaking.")
@@ -124,12 +121,10 @@ fun ConnectedAiScreen(
             isActuallyRecognizing = false
         }
     }
-    // Assign the created launcher to our state holder
-    LaunchedEffect(permissionLauncher) { // Keyed on the actual launcher instance
+    LaunchedEffect(permissionLauncher) {
         localPermissionLauncherState = permissionLauncher
     }
-    
-    // Enforce Landscape and manage connection state
+
     DisposableEffect(Unit) {
         val originalOrientation = activity?.requestedOrientation
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -137,7 +132,6 @@ fun ConnectedAiScreen(
         if (!isConnected) { 
             homeViewModel.toggleConnection()
         } else if (!isListeningUserIntent && hasAudioPermission && !isTtsActuallySpeaking) {
-            // Auto-start listening if connected, has permission, not already intending to listen, and TTS not speaking
             isListeningUserIntent = true
             startListeningInternal()
         }
@@ -161,7 +155,7 @@ fun ConnectedAiScreen(
             override fun onEndOfSpeech() { if(isListeningUserIntent) listeningStatusText = "Processing..."; isActuallyRecognizing = false }
             override fun onError(error: Int) {
                 isActuallyRecognizing = false 
-                val errorMsg = when (error) { /* ... */ 
+                val errorMsg = when (error) {
                     SpeechRecognizer.ERROR_AUDIO -> "Audio error"
                     SpeechRecognizer.ERROR_CLIENT -> "Client error"
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> { hasAudioPermission = false; "Permissions error" }
@@ -197,7 +191,7 @@ fun ConnectedAiScreen(
                     else { listeningStatusText += " Tap Mic to speak again." }
                 }
             }
-            override fun onPartialResults(partialResults: Bundle?) { /* ... */ }
+            override fun onPartialResults(partialResults: Bundle?) { }
             override fun onEvent(eventType: Int, params: Bundle?) {}
         }
         speechRecognizer.setRecognitionListener(recognitionListener)
@@ -209,15 +203,15 @@ fun ConnectedAiScreen(
             if (isTtsActuallySpeaking) {
                 if (isActuallyRecognizing) { speechRecognizer.cancel(); isActuallyRecognizing = false }
                 listeningStatusText = "AI speaking..."
-            } else { // TTS is NOT speaking
+            } else {
                 if (isListeningUserIntent && hasAudioPermission && !isActuallyRecognizing && !isLoading) {
                     startListeningInternal()
                 } else if (!isListeningUserIntent && !isActuallyRecognizing) {
                      if (hasAudioPermission) listeningStatusText = "Tap Mic to Start Listening"
-                     // else: permissionLauncher callback will set text if permission was just denied/granted
+
                 }
             }
-        } else { // Not connected
+        } else {
             if(isActuallyRecognizing) speechRecognizer.cancel()
             isListeningUserIntent = false
             isActuallyRecognizing = false

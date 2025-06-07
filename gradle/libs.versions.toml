@@ -1,16 +1,16 @@
 [versions]
-agp = "8.2.2" # Changed to a known stable AGP version
+agp = "8.2.2"
 kotlin = "2.0.21"
 coreKtx = "1.12.0"
 junit = "4.13.2"
 androidxJunit = "1.1.5"
 espressoCore = "3.5.1"
-lifecycle = "2.6.2" # Consolidated lifecycle version
+lifecycle = "2.6.2"
 activityCompose = "1.8.2"
-composeBom = "2024.05.00" # Updated to a more recent BOM version
-generativeai = "0.7.0" # Updated to current non-deprecated Gemini SDK version
+composeBom = "2024.05.00"
+generativeai = "0.7.0"
 kotlinxCoroutinesAndroid = "1.7.3"
-navigationCompose = "2.7.7" # Added for Jetpack Navigation Compose
+navigationCompose = "2.7.7"
 
 [libraries]
 # AndroidX Core

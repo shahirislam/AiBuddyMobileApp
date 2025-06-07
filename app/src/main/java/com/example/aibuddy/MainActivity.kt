@@ -40,8 +40,6 @@ class MainActivity : ComponentActivity() {
                     composable(AppDestinations.HOME_ROUTE) {
                         HomeScreen(
                             onConnectClicked = {
-                                // Logic for what happens on connect before navigating
-                                // For now, just navigate. ViewModel interaction might be needed here.
                                 navController.navigate(AppDestinations.CONNECTED_AI_ROUTE)
                             }
                         )

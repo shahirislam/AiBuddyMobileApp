@@ -19,7 +19,7 @@ fun SplashScreen(onTimeout: () -> Unit) {
 
     LaunchedEffect(key1 = true) {
         coroutineScope.launch {
-            delay(3000) // Splash screen duration
+            delay(3000)
             onTimeout()
         }
     }
@@ -31,7 +31,7 @@ fun SplashScreen(onTimeout: () -> Unit) {
                 .padding(innerPadding),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = "AiBuddy") // Or any other splash screen content
+            Text(text = "AiBuddy")
         }
     }
 }

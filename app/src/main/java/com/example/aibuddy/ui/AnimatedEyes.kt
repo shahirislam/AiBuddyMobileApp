@@ -12,9 +12,9 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun AnimatedEyes() {
-    val blinkDuration = 2000 // Adjust blink duration as needed
+    val blinkDuration = 2000
     val eyeOpenValue = 1f
-    val eyeClosedValue = 0.1f // Adjust closed eye height as needed
+    val eyeClosedValue = 0.1f
 
     val eyeHeight = remember { Animatable(eyeOpenValue) }
 

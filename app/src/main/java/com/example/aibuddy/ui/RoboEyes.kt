@@ -19,8 +19,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-// Eye Colors remain the same
-val eyeShineColor = Color(0xFF00E5FF)    // Bright cyan for the eye itself
+val eyeShineColor = Color(0xFF00E5FF)
 val pupilColor = Color.Black
 
 @Composable
@@ -32,22 +31,20 @@ fun RoboEyes(
     eyeCornerRadius: Dp = 16.dp,
     pupilRadiusFactor: Float = 0.3f
 ) {
-    // Animate eye size based on state
     val animatedEyeSize by animateDpAsState(
         targetValue = when {
-            isAiSpeaking -> baseEyeSize * 1.2f // Slightly larger when AI is speaking
-            isListeningToUser -> baseEyeSize * 1.1f // Slightly attentive when listening
+            isAiSpeaking -> baseEyeSize * 1.2f
+            isListeningToUser -> baseEyeSize * 1.1f
             else -> baseEyeSize
         },
         animationSpec = tween(durationMillis = 300), label = "eyeSizeAnimation"
     )
 
-    // Blinking animation state (for the height of the eye, simulating a blink)
     val blinkOpenValue = 1.0f
     val blinkClosedValue = 0.1f
     val eyeBlinkFactor = remember { Animatable(blinkOpenValue) }
 
-    LaunchedEffect(key1 = Unit) { // Blinking coroutine
+    LaunchedEffect(key1 = Unit) {
         while (true) {
             delay( (2000..5000).random().toLong()) // Random delay between blinks
             eyeBlinkFactor.animateTo(blinkClosedValue, animationSpec = tween(100))
@@ -80,7 +77,7 @@ fun SingleRoboEye(
     eyeSize: Dp,
     pupilRadiusFactor: Float,
     cornerRadius: Dp,
-    blinkFactor: Float // Current blink state (1.0 for open, <1.0 for partially/fully closed)
+    blinkFactor: Float
 ) {
     Canvas(modifier = modifier.size(eyeSize)) {
         val sizePx = eyeSize.toPx()
@@ -98,10 +95,8 @@ fun SingleRoboEye(
             cornerRadius = CornerRadius(cornerRadiusPx, cornerRadiusPx)
         )
 
-        // Draw pupil only if eye is not fully closed by blink
-        if (blinkFactor > 0.15f) { // Threshold to hide pupil during blink
-            val pupilRadius = (sizePx / 2) * pupilRadiusFactor // Pupil size based on full eye size
-            // Adjust pupil position to stay centered within the blinking eye
+        if (blinkFactor > 0.15f) {
+            val pupilRadius = (sizePx / 2) * pupilRadiusFactor
             val pupilCenterY = verticalOffset + (eyeDisplayHeight / 2)
             drawCircle(
                 color = pupilColor,

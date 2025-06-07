@@ -67,10 +67,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), T
     private fun speak(text: String) {
         if (text.isBlank()) return
 
-        // Stop any current speech before starting a new one.
-        // This also helps if onDone/onError wasn't called for a previous utterance.
         tts?.stop() 
-        _isTtsSpeaking.value = true // Set true immediately, onStart might have a slight delay
+        _isTtsSpeaking.value = true
 
         val utteranceId = System.currentTimeMillis().toString()
         val params = Bundle().apply {
@@ -80,13 +78,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), T
         val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
         if (result == TextToSpeech.ERROR) {
             Log.e("TTS", "Error in tts.speak for utteranceId $utteranceId")
-            _isTtsSpeaking.value = false // Reset if speak call itself fails
+            _isTtsSpeaking.value = false
         }
     }
 
     fun stopSpeaking() {
         tts?.stop()
-        _isTtsSpeaking.value = false // Manually update state as onDone might not be called
+        _isTtsSpeaking.value = false
         Log.i("TTS", "TTS manually stopped by user.")
     }
 
@@ -115,12 +113,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), T
     fun toggleConnection() {
         _isConnected.value = !_isConnected.value
         if (!_isConnected.value) {
-            // Reset states when disconnected
             inputText = ""
             _aiBuddyResponse.value = ""
             _errorMessage.value = null
         } else {
-            // When connected, initiate AI greeting
             initiateAiGreeting()
         }
     }
@@ -129,7 +125,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), T
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
-            // Reverted prompt for the AI to initiate a conversation in English
             val initialPrompt = "You are AiBuddy, a friendly and empathetic AI companion. Start a short, welcoming conversation with the user. For example, ask them how they are doing, what they are up to, or mention something interesting to break the ice. Keep your initial message concise."
             val result = repository.generateContent(initialPrompt)
             result.fold(
@@ -138,7 +133,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), T
                     if (responseText.isNotBlank()) speak(responseText)
                 },
                 onFailure = { exception ->
-                    _aiBuddyResponse.value = "" // Clear previous response
+                    _aiBuddyResponse.value = ""
                     _errorMessage.value = "Error initiating conversation: ${exception.localizedMessage}"
                 }
             )
@@ -164,10 +159,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), T
                 onSuccess = { responseText ->
                     _aiBuddyResponse.value = responseText
                     if (responseText.isNotBlank()) speak(responseText)
-                    inputText = "" // Clear input after sending
+                    inputText = ""
                 },
                 onFailure = { exception ->
-                    _aiBuddyResponse.value = "" // Clear previous response
+                    _aiBuddyResponse.value = ""
                     _errorMessage.value = "Error: ${exception.localizedMessage}"
                 }
             )

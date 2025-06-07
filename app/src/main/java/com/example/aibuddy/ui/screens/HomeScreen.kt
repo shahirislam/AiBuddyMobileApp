@@ -17,8 +17,6 @@ fun HomeScreen(
     onConnectClicked: () -> Unit
 ) {
     val isConnected by homeViewModel.isConnected.collectAsState()
-    // isLoading might still be relevant if connecting involves an async operation
-    // before navigation, but for now, toggleConnection is synchronous from ViewModel's perspective.
     val isLoading by homeViewModel.isLoading.collectAsState() 
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -36,29 +34,18 @@ fun HomeScreen(
                 modifier = Modifier.padding(bottom = 24.dp)
             )
 
-            // You can keep AnimatedEyes here for a consistent look,
-            // or remove it if it's only for the connected screen.
-            // AnimatedEyes() 
-            // Spacer(modifier = Modifier.height(32.dp))
-
-
-            // The "Connect" button. If already connected (e.g., user navigated back),
-            // it could say "Re-enter Conversation" or similar, or just "Connect"
-            // which would re-trigger the connection logic if needed and navigate.
             Button(
                 onClick = {
                     if (!isConnected) {
-                        homeViewModel.toggleConnection() // Sets isConnected to true, triggers AI greeting
+                        homeViewModel.toggleConnection()
                     }
-                    // Always navigate when this button is clicked from HomeScreen
                     onConnectClicked() 
                 },
                 modifier = Modifier.fillMaxWidth(0.7f),
-                enabled = !isLoading // Disable if any background loading is happening
+                enabled = !isLoading
             ) {
                 Text(text = if (isConnected) "Re-join AiBuddy" else "Connect to AiBuddy", style = MaterialTheme.typography.titleMedium)
             }
-
             if (isLoading && !isConnected) {
                 Spacer(modifier = Modifier.height(16.dp))
                 CircularProgressIndicator()
