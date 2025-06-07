@@ -1,0 +1,131 @@
+package com.example.aibuddy.ui
+
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+// Eye Colors remain the same
+val eyeShineColor = Color(0xFF00E5FF)    // Bright cyan for the eye itself
+val pupilColor = Color.Black
+
+@Composable
+fun RoboEyes(
+    modifier: Modifier = Modifier,
+    isAiSpeaking: Boolean = false,
+    isListeningToUser: Boolean = false,
+    baseEyeSize: Dp = 80.dp,
+    eyeCornerRadius: Dp = 16.dp,
+    pupilRadiusFactor: Float = 0.3f
+) {
+    // Animate eye size based on state
+    val animatedEyeSize by animateDpAsState(
+        targetValue = when {
+            isAiSpeaking -> baseEyeSize * 1.2f // Slightly larger when AI is speaking
+            isListeningToUser -> baseEyeSize * 1.1f // Slightly attentive when listening
+            else -> baseEyeSize
+        },
+        animationSpec = tween(durationMillis = 300), label = "eyeSizeAnimation"
+    )
+
+    // Blinking animation state (for the height of the eye, simulating a blink)
+    val blinkOpenValue = 1.0f
+    val blinkClosedValue = 0.1f
+    val eyeBlinkFactor = remember { Animatable(blinkOpenValue) }
+
+    LaunchedEffect(key1 = Unit) { // Blinking coroutine
+        while (true) {
+            delay( (2000..5000).random().toLong()) // Random delay between blinks
+            eyeBlinkFactor.animateTo(blinkClosedValue, animationSpec = tween(100))
+            eyeBlinkFactor.animateTo(blinkOpenValue, animationSpec = tween(150))
+        }
+    }
+
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(animatedEyeSize / 3)
+    ) {
+        SingleRoboEye(
+            eyeSize = animatedEyeSize,
+            pupilRadiusFactor = pupilRadiusFactor,
+            cornerRadius = eyeCornerRadius,
+            blinkFactor = eyeBlinkFactor.value
+        )
+        SingleRoboEye(
+            eyeSize = animatedEyeSize,
+            pupilRadiusFactor = pupilRadiusFactor,
+            cornerRadius = eyeCornerRadius,
+            blinkFactor = eyeBlinkFactor.value
+        )
+    }
+}
+
+@Composable
+fun SingleRoboEye(
+    modifier: Modifier = Modifier,
+    eyeSize: Dp,
+    pupilRadiusFactor: Float,
+    cornerRadius: Dp,
+    blinkFactor: Float // Current blink state (1.0 for open, <1.0 for partially/fully closed)
+) {
+    Canvas(modifier = modifier.size(eyeSize)) {
+        val sizePx = eyeSize.toPx()
+        val cornerRadiusPx = cornerRadius.toPx()
+        
+        // Apply blink factor to height
+        val eyeDisplayHeight = sizePx * blinkFactor
+        val verticalOffset = (sizePx - eyeDisplayHeight) / 2
+
+        // Draw the main eye shape (rounded square)
+        drawRoundRect(
+            color = eyeShineColor,
+            topLeft = Offset(0f, verticalOffset),
+            size = Size(sizePx, eyeDisplayHeight),
+            cornerRadius = CornerRadius(cornerRadiusPx, cornerRadiusPx)
+        )
+
+        // Draw pupil only if eye is not fully closed by blink
+        if (blinkFactor > 0.15f) { // Threshold to hide pupil during blink
+            val pupilRadius = (sizePx / 2) * pupilRadiusFactor // Pupil size based on full eye size
+            // Adjust pupil position to stay centered within the blinking eye
+            val pupilCenterY = verticalOffset + (eyeDisplayHeight / 2)
+            drawCircle(
+                color = pupilColor,
+                radius = pupilRadius,
+                center = Offset(sizePx / 2, pupilCenterY)
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF333333)
+@Composable
+fun RoboEyesPreviewIdle() {
+    RoboEyes(isAiSpeaking = false, isListeningToUser = false)
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF333333)
+@Composable
+fun RoboEyesPreviewSpeaking() {
+    RoboEyes(isAiSpeaking = true, isListeningToUser = false)
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF333333)
+@Composable
+fun RoboEyesPreviewListening() {
+    RoboEyes(isAiSpeaking = false, isListeningToUser = true)
+}
