@@ -7,7 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.aibuddy.data.AiBuddyRepository
-import com.example.aibuddy.texttospeech.TextToSpeechManager // Added
+import com.example.aibuddy.texttospeech.TextToSpeechManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import android.util.Log
 import kotlinx.coroutines.flow.StateFlow
@@ -25,32 +25,42 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     // Flag to ensure greeting happens only once per connection session
     private var hasGreetedThisSession = false
 
-    // API Key field removed as we are now using Service Account JSON
-
     init {
-        Log.i("HomeViewModel", "HomeViewModel instance created: ${this.hashCode()} (PID: ${android.os.Process.myPid()})") // Diagnostic log
-        textToSpeechManager = TextToSpeechManager(application.applicationContext) // API Key parameter removed
-        // The TextToSpeechManager initializes asynchronously using the service_account_key.json.
-        // We'll manage _isTtsSpeaking when speak() and stopSpeaking() are called.
+        Log.i("HomeViewModel", "HomeViewModel instance created: ${this.hashCode()} (PID: ${android.os.Process.myPid()})")
+
+        // Initialize TextToSpeechManager with callbacks
+        textToSpeechManager = TextToSpeechManager(
+            application.applicationContext,
+            onSpeechStart = {
+                // This callback is invoked by TextToSpeechManager when speech playback actually starts.
+                Log.d("HomeViewModel", "TTSManager reports speech started.")
+                _isTtsSpeaking.value = true
+            },
+            onSpeechFinish = {
+                // This callback is invoked by TextToSpeechManager when speech playback completes or errors.
+                Log.d("HomeViewModel", "TTSManager reports speech finished.")
+                _isTtsSpeaking.value = false
+            }
+        )
     }
 
+    // `speak` function now just calls the TTS manager, its state will be managed by callbacks
     private fun speak(text: String) {
         if (text.isBlank()) {
-            Log.w("TTS", "Speak called with blank text.")
+            Log.w("TTS", "Speak called with blank text. Not speaking.")
+            _isTtsSpeaking.value = false // Ensure state is false if nothing to speak
             return
         }
-        _isTtsSpeaking.value = true // Assume speaking starts immediately for UI feedback
         Log.d("TTS", "Attempting to speak: '$text' using Google Cloud TTS")
         textToSpeechManager?.speak(text)
-        // Note: The actual start and stop of speech is handled within TextToSpeechManager.
-        // For more accurate _isTtsSpeaking, TextToSpeechManager would need to provide callbacks.
-        // For now, stopSpeaking() will set _isTtsSpeaking to false.
+        // _isTtsSpeaking is now updated via onSpeechStart callback from TextToSpeechManager
     }
 
     fun stopSpeaking() {
         textToSpeechManager?.stopSpeaking()
-        _isTtsSpeaking.value = false // Manually set to false when stopping
-        Log.i("TTS", "TTS manually stopped by user (or playback finished).")
+        // _isTtsSpeaking is now updated via onSpeechFinish callback from TextToSpeechManager
+        // which is called by stopSpeaking() in TextToSpeechManager's cleanupMediaPlayer().
+        Log.i("TTS", "TTS manually stopped by user.")
     }
 
     override fun onCleared() {
@@ -76,7 +86,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun connectAndGreet() {
         Log.i("HomeViewModel", "Instance ${this.hashCode()} - connectAndGreet called. Current isConnected: ${_isConnected.value}, hasGreeted: $hasGreetedThisSession")
-        if (!_isConnected.value) { // Only proceed if not already connected
+        if (!_isConnected.value) {
             _isConnected.value = true
             Log.i("HomeViewModel", "Instance ${this.hashCode()} - connectAndGreet: Set isConnected to true.")
             if (!hasGreetedThisSession) {
@@ -89,39 +99,28 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             Log.i("HomeViewModel", "Instance ${this.hashCode()} - connectAndGreet: Already connected. Doing nothing.")
         }
-        // If already connected, do nothing, preventing a toggle.
     }
 
     fun disconnect() {
         Log.i("HomeViewModel", "Instance ${this.hashCode()} - disconnect() called. Current isConnected: ${_isConnected.value}")
-        if (_isConnected.value) { // Only if currently connected
+        if (_isConnected.value) {
             _isConnected.value = false
-            Log.i("HomeViewModel", "Instance ${this.hashCode()} - disconnect: Set isConnected to false.")
             inputText = ""
             _aiBuddyResponse.value = ""
             _errorMessage.value = null
-            hasGreetedThisSession = false // Reset greeting flag
+            hasGreetedThisSession = false
+            stopSpeaking() // Ensure TTS is stopped and _isTtsSpeaking is false via callback
             Log.i("HomeViewModel", "Instance ${this.hashCode()} - Disconnected by disconnect() call.")
         }
     }
 
-    // toggleConnection will now primarily act as a way to flip the state.
-    // For explicit connect with greeting, use connectAndGreet().
-    // For explicit disconnect, use disconnect().
     fun toggleConnection() {
         Log.i("HomeViewModel", "Instance ${this.hashCode()} - toggleConnection called. Current state isConnected: ${_isConnected.value}")
         if (_isConnected.value) {
-            // If currently connected, toggle means disconnect.
             disconnect()
         } else {
-            // If currently disconnected, toggle means connect (but without the greeting logic here, connectAndGreet handles that).
-            // This path might be hit if something calls toggleConnection when already disconnected.
-            // We'll connect, but rely on hasGreetedThisSession to prevent re-greeting if it already happened.
             _isConnected.value = true
             Log.i("HomeViewModel", "Instance ${this.hashCode()} - toggleConnection: Transitioned to connected. Greeting will depend on hasGreetedThisSession.")
-            // No direct call to initiateAiGreeting() here to avoid conflicts with connectAndGreet's logic.
-            // If a greeting is needed, it should have been through connectAndGreet.
-            // If hasGreetedThisSession is false, a subsequent UI effect might trigger it if appropriate.
         }
     }
 
@@ -136,16 +135,15 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                     _aiBuddyResponse.value = responseText
                     if (responseText.isNotBlank()) {
                         speak(responseText)
+                    } else {
+                        Log.w("HomeViewModel", "AI greeting response is blank. No speech will be generated.")
+                        _isTtsSpeaking.value = false // Explicitly set to false if no speech
                     }
-                    // If greeting was blank or failed to speak, hasGreetedThisSession is still true.
-                    // This means it won't try again until a full disconnect/reconnect.
                 },
                 onFailure = { exception ->
                     _aiBuddyResponse.value = ""
                     _errorMessage.value = "Error initiating conversation: ${exception.localizedMessage}"
-                    // If greeting fails, hasGreetedThisSession is still true.
-                    // This prevents repeated attempts if the failure is persistent,
-                    // until a full disconnect and reconnect.
+                    _isTtsSpeaking.value = false // Ensure TTS speaking state is false on error
                 }
             )
             _isLoading.value = false
@@ -169,18 +167,21 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             result.fold(
                 onSuccess = { responseText ->
                     _aiBuddyResponse.value = responseText
-                    if (responseText.isNotBlank()) speak(responseText)
+                    if (responseText.isNotBlank()) {
+                        speak(responseText)
+                    } else {
+                        Log.w("HomeViewModel", "AI response for message is blank. No speech will be generated.")
+                        _isTtsSpeaking.value = false // Explicitly set to false if no speech
+                    }
                     inputText = ""
                 },
                 onFailure = { exception ->
                     _aiBuddyResponse.value = ""
                     _errorMessage.value = "Error: ${exception.localizedMessage}"
+                    _isTtsSpeaking.value = false // Ensure TTS speaking state is false on error
                 }
             )
             _isLoading.value = false
         }
     }
-
-    // Ensure that initiateAiGreeting also logs the instance
-    // This is already implicitly handled as other methods log the instance.
 }

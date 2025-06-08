@@ -16,7 +16,12 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 
-class TextToSpeechManager(private val context: Context) { // API Key removed from constructor
+// Modify constructor to accept callbacks
+class TextToSpeechManager(
+    private val context: Context,
+    private val onSpeechStart: () -> Unit, // Callback for when speech playback begins
+    private val onSpeechFinish: () -> Unit // Callback for when speech playback ends (completion or error)
+) {
 
     private var textToSpeechClient: TextToSpeechClient? = null
     private var mediaPlayer: MediaPlayer? = null
@@ -32,7 +37,7 @@ class TextToSpeechManager(private val context: Context) { // API Key removed fro
                 Log.i("TTSManager", "Service account key file opened from res/raw.")
 
                 val credentials = GoogleCredentials.fromStream(inputStream)
-                    .createScoped(listOf("https://www.googleapis.com/auth/cloud-platform")) // Ensure correct scope
+                    .createScoped(listOf("https://www.googleapis.com/auth/cloud-platform"))
                 Log.i("TTSManager", "GoogleCredentials created from service account key.")
 
                 val settings = TextToSpeechSettings.newBuilder()
@@ -49,6 +54,7 @@ class TextToSpeechManager(private val context: Context) { // API Key removed fro
                 }
             } catch (e: Throwable) {
                 Log.e("TTSManager", "CRITICAL EXCEPTION during TextToSpeechClient initialization with Service Account.", e)
+                onSpeechFinish.invoke() // In case of initialization error, ensure state is reset
             }
         }
     }
@@ -56,10 +62,12 @@ class TextToSpeechManager(private val context: Context) { // API Key removed fro
     fun speak(text: String) {
         if (textToSpeechClient == null) {
             Log.e("TTSManager", "TextToSpeechClient is not initialized or failed to initialize. Cannot speak.")
+            onSpeechFinish.invoke() // Notify that speech did not start
             return
         }
 
-        stopSpeaking()
+        stopSpeaking() // Ensure any previous playback is stopped before starting new one
+        onSpeechStart.invoke() // Notify that speech is about to start
 
         ttsScope.launch {
             try {
@@ -101,37 +109,49 @@ class TextToSpeechManager(private val context: Context) { // API Key removed fro
                         setOnPreparedListener {
                             Log.d("TTSManager", "MediaPlayer prepared, starting playback.")
                             start()
+                            // onSpeechStart is already invoked before the network call,
+                            // if you need a very precise "started playing" state,
+                            // you could move onSpeechStart.invoke() here, but for now
+                            // it's fine where it is to indicate intent.
                         }
                         setOnCompletionListener {
                             Log.d("TTSManager", "MediaPlayer playback completed.")
-                            stopSpeaking()
-                            outputFile.delete()
+                            cleanupMediaPlayer() // Clean up resources
+                            outputFile.delete() // Delete temp file
+                            onSpeechFinish.invoke() // Notify completion
                         }
                         setOnErrorListener { _, what, extra ->
                             Log.e("TTSManager", "MediaPlayer Error: what: $what, extra: $extra")
-                            stopSpeaking()
-                            outputFile.delete()
+                            cleanupMediaPlayer() // Clean up resources
+                            outputFile.delete() // Delete temp file
+                            onSpeechFinish.invoke() // Notify error as a finish condition
                             true
                         }
                     }
                 } else {
                     Log.e("TTSManager", "SynthesizeSpeech response was successful, but audio content is null.")
+                    onSpeechFinish.invoke() // If no audio, consider it finished
                 }
 
             } catch (e: Exception) {
                 Log.e("TTSManager", "Error synthesizing speech in speak function", e)
+                onSpeechFinish.invoke() // Notify error as a finish condition
             }
         }
     }
 
     fun stopSpeaking() {
+        cleanupMediaPlayer() // Centralize cleanup
+    }
+
+    private fun cleanupMediaPlayer() {
         mediaPlayer?.let {
             if (it.isPlaying) {
                 it.stop()
             }
-            it.reset()
+            it.reset() // Reset rather than releasing immediately to allow reuse if needed, then release.
             it.release()
-            Log.d("TTSManager", "MediaPlayer stopped and released.")
+            Log.d("TTSManager", "MediaPlayer stopped, reset, and released.")
         }
         mediaPlayer = null
         val outputFile = File(context.cacheDir, "output_tts.mp3")
@@ -139,12 +159,15 @@ class TextToSpeechManager(private val context: Context) { // API Key removed fro
             outputFile.delete()
             Log.d("TTSManager", "Cleaned up temporary TTS audio file.")
         }
+        // This is crucial: If stopSpeaking is called externally, it means speech ended.
+        onSpeechFinish.invoke()
     }
+
 
     fun shutdown() {
         Log.d("TTSManager", "Shutting down TextToSpeechManager...")
-        stopSpeaking()
-        ttsJob.cancel()
+        stopSpeaking() // Ensure media player is released and state is correct
+        ttsJob.cancel() // Cancel any ongoing coroutines
         try {
             textToSpeechClient?.shutdownNow()
             textToSpeechClient?.close()

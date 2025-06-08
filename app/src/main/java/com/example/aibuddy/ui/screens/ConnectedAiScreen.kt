@@ -1,7 +1,7 @@
 package com.example.aibuddy.ui.screens
 
 import android.Manifest
-import android.app.Activity // Keep this for casting LocalContext.current if needed for other purposes
+import android.app.Activity
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
@@ -31,19 +31,18 @@ import com.example.aibuddy.viewmodel.HomeViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
-import androidx.activity.ComponentActivity // Added for ViewModel scoping
+import androidx.activity.ComponentActivity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConnectedAiScreen(
     navController: NavController
-    // homeViewModel: HomeViewModel = viewModel() // Old way, parameter removed
 ) {
     val context = LocalContext.current
-    val componentActivity = context as ComponentActivity // For ViewModel scoping
-    val homeViewModel: HomeViewModel = viewModel(viewModelStoreOwner = componentActivity) // Scoped to Activity
+    val componentActivity = context as ComponentActivity
+    val homeViewModel: HomeViewModel = viewModel(viewModelStoreOwner = componentActivity)
 
-    val activity = context as? Activity // Can still be used if needed for specific Activity operations
+    val activity = context as? Activity
     val coroutineScope = rememberCoroutineScope()
 
     val isConnected by homeViewModel.isConnected.collectAsState()
@@ -51,7 +50,6 @@ fun ConnectedAiScreen(
     val isLoading by homeViewModel.isLoading.collectAsState()
     val errorMessage by homeViewModel.errorMessage.collectAsState()
     val isTtsActuallySpeaking by homeViewModel.isTtsSpeaking.collectAsState()
-    val currentInputText = homeViewModel.inputText // Changed to direct assignment
 
     var hasAudioPermission by remember {
         mutableStateOf(
@@ -64,6 +62,10 @@ fun ConnectedAiScreen(
     var isListeningUserIntent by remember { mutableStateOf(false) }
     var isActuallyRecognizing by remember { mutableStateOf(false) }
     var listeningStatusText by remember { mutableStateOf("Tap Mic to Start Listening") }
+
+    // This state helps us detect the *moment* TTS stops
+    val ttsPreviouslySpeaking = remember { mutableStateOf(false) }
+
 
     val speechRecognizer = remember { SpeechRecognizer.createSpeechRecognizer(context) }
     var localPermissionLauncherState by remember { mutableStateOf<ActivityResultLauncher<String>?>(null) }
@@ -79,15 +81,17 @@ fun ConnectedAiScreen(
     }
 
     fun startListeningInternal() {
-        if (!isConnected || !isListeningUserIntent || isTtsActuallySpeaking) {
-            if(isTtsActuallySpeaking) Log.d("STT", "Blocked STT start because TTS is speaking.")
+        if (!isConnected || isTtsActuallySpeaking || isLoading) { // Ensure not listening if AI is speaking or loading
+            Log.d("STT", "Blocked STT start: isConnected=$isConnected, isTtsActuallySpeaking=$isTtsActuallySpeaking, isLoading=$isLoading")
             isActuallyRecognizing = false
+            isListeningUserIntent = false // Explicitly set to false if conditions prevent starting
             return
         }
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
             listeningStatusText = "Speech recognition not available."
             Log.e("STT", "Speech recognition not available.")
-            isListeningUserIntent = false; isActuallyRecognizing = false
+            isListeningUserIntent = false
+            isActuallyRecognizing = false
             return
         }
         if (hasAudioPermission) {
@@ -95,6 +99,7 @@ fun ConnectedAiScreen(
                 if (!isActuallyRecognizing) {
                     isActuallyRecognizing = true
                     speechRecognizer.startListening(createSpeechIntent())
+                    listeningStatusText = "Listening..."
                     Log.d("STT", "startListeningInternal called, STT started.")
                 }
             } catch (e: Exception) {
@@ -115,10 +120,11 @@ fun ConnectedAiScreen(
         hasAudioPermission = isGranted
         if (isGranted) {
             listeningStatusText = "Permission granted."
+            // If permission is granted and we intend to listen, start immediately
             if (isListeningUserIntent) {
                 startListeningInternal()
             } else {
-                 listeningStatusText += " Tap Mic to Start."
+                listeningStatusText += " Tap Mic to Start."
             }
         } else {
             listeningStatusText = "Audio permission denied."
@@ -134,14 +140,8 @@ fun ConnectedAiScreen(
         val originalOrientation = activity?.requestedOrientation
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
 
-        // The connection is now expected to be handled by the screen that navigates here (HomeScreen).
-        // This screen will react to the established connection state, for example, to auto-start listening.
-        if (isConnected && hasAudioPermission && !isTtsActuallySpeaking && !isLoading) { // Added !isLoading
-            if (!isListeningUserIntent) {
-                isListeningUserIntent = true
-                startListeningInternal()
-            }
-        }
+        // Initialize ttsPreviouslySpeaking on screen start
+        ttsPreviouslySpeaking.value = isTtsActuallySpeaking
 
         onDispose {
             activity?.requestedOrientation = originalOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
@@ -150,6 +150,8 @@ fun ConnectedAiScreen(
             }
             isListeningUserIntent = false
             isActuallyRecognizing = false
+            // Important: Stop TTS when leaving the screen
+            homeViewModel.stopSpeaking()
         }
     }
 
@@ -159,16 +161,19 @@ fun ConnectedAiScreen(
             override fun onBeginningOfSpeech() { if(isListeningUserIntent) listeningStatusText = "Hearing speech..." }
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() { if(isListeningUserIntent) listeningStatusText = "Processing..."; isActuallyRecognizing = false }
+            override fun onEndOfSpeech() {
+                // This indicates the speech recognizer has finished processing user's speech
+                if(isListeningUserIntent) listeningStatusText = "Processing...";
+                isActuallyRecognizing = false
+            }
             override fun onError(error: Int) {
-                isActuallyRecognizing = false 
+                isActuallyRecognizing = false
                 val errorMsg = when (error) {
                     SpeechRecognizer.ERROR_AUDIO -> "Audio error"
                     SpeechRecognizer.ERROR_CLIENT -> "Client error"
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> { hasAudioPermission = false; "Permissions error" }
                     SpeechRecognizer.ERROR_NETWORK -> "Network error"
                     SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout"
-                    SpeechRecognizer.ERROR_NO_MATCH -> "No speech match"
                     SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Recognizer busy"
                     SpeechRecognizer.ERROR_SERVER -> "Server error"
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech input"
@@ -179,10 +184,12 @@ fun ConnectedAiScreen(
                     if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
                         error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
                         speechRecognizer.cancel()
+                        // Automatically re-start listening if there was a minor error or no speech, if still intending to listen
                         listeningStatusText = if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) "Didn't catch that. Listening again..." else "Listener error, retrying..."
                         coroutineScope.launch { delay(500); if(isListeningUserIntent) startListeningInternal() }
                     } else {
-                        listeningStatusText = "Error: $errorMsg. Listening stopped."; isListeningUserIntent = false
+                        listeningStatusText = "Error: $errorMsg. Listening stopped.";
+                        isListeningUserIntent = false // Stop trying to listen on serious errors
                     }
                 } else { listeningStatusText = "Error: $errorMsg." }
             }
@@ -190,10 +197,13 @@ fun ConnectedAiScreen(
                 isActuallyRecognizing = false
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (!matches.isNullOrEmpty() && matches[0].isNotBlank()) {
-                    homeViewModel.updateInputText(matches[0]); homeViewModel.sendMessage()
+                    homeViewModel.updateInputText(matches[0])
+                    homeViewModel.sendMessage()
                     listeningStatusText = "Message sent. AI responding..."
+                    isListeningUserIntent = false // User's turn is over, AI will speak next
                 } else {
                     listeningStatusText = "Didn't catch that clearly."
+                    // If user is still intended to speak, re-start listening
                     if (isListeningUserIntent) { coroutineScope.launch { delay(500); if(isListeningUserIntent) startListeningInternal() } }
                     else { listeningStatusText += " Tap Mic to speak again." }
                 }
@@ -205,71 +215,63 @@ fun ConnectedAiScreen(
         onDispose { speechRecognizer.destroy() }
     }
 
-    // Helper to track previous value of isTtsActuallySpeaking to detect when it stops
-    val ttsPreviouslySpeaking = remember { mutableStateOf(isTtsActuallySpeaking) }
-
+    // This LaunchedEffect manages the conversational flow and button states
     LaunchedEffect(
         isTtsActuallySpeaking,
-        isListeningUserIntent, // User's explicit intent (button press)
         isConnected,
         hasAudioPermission,
         isLoading
     ) {
         val didTtsJustStop = ttsPreviouslySpeaking.value && !isTtsActuallySpeaking
+        // Update the previous TTS speaking state for the next recomposition
+        ttsPreviouslySpeaking.value = isTtsActuallySpeaking
 
-        if (isConnected) {
-            if (isTtsActuallySpeaking) { // AI is actively speaking
-                if (isActuallyRecognizing) { // If STT is somehow active, cancel it
-                    speechRecognizer.cancel()
-                    isActuallyRecognizing = false
-                }
-                listeningStatusText = "AI speaking..."
-            } else { // AI is NOT speaking
-                if (hasAudioPermission && !isLoading) {
-                    // Auto-restart logic: If TTS just stopped and user isn't already intending to listen, set the intent.
-                    if (didTtsJustStop && !isListeningUserIntent) {
-                        isListeningUserIntent = true // Set user intent to listen. Effect will re-run.
-                    }
 
-                    if (isListeningUserIntent) { // User intends to listen (either manually or auto-set)
-                        if (!isActuallyRecognizing) {
-                            startListeningInternal() // This function has its own guards
-                        }
-                        // If isActuallyRecognizing is true, listeningStatusText is handled by RecognitionListener
-                    } else { // User does NOT intend to listen (e.g., pressed Stop or never started)
-                        if (!isActuallyRecognizing) { // Ensure not stuck in a recognizing state
-                           listeningStatusText = "Tap Mic to Start Listening"
-                        }
-                    }
-                } else if (!hasAudioPermission && !isLoading) {
-                    // Update status text based on whether user intent was active before permission issue
-                    listeningStatusText = if (isListeningUserIntent && !isActuallyRecognizing) {
-                        "Listening stopped (Permission Denied)"
-                    } else {
-                        "Tap Mic for Permission"
-                    }
-                } else if (isLoading) {
-                    // If loading (e.g., AI processing), ensure STT is stopped.
-                    if (isActuallyRecognizing) {
-                        speechRecognizer.cancel() 
-                        isActuallyRecognizing = false
-                    }
-                    // Using the collected state: currentInputText
-                    listeningStatusText = if (aiBuddyResponse.isNotEmpty() && (currentInputText?.isNotEmpty() == true)) "AI Responding..." else "Processing..."
-                }
-            }
-        } else { // Not connected
-            if (isActuallyRecognizing) {
-                speechRecognizer.cancel()
-            }
+        if (!isConnected) {
+            if (isActuallyRecognizing) speechRecognizer.cancel()
             isListeningUserIntent = false
             isActuallyRecognizing = false
             listeningStatusText = "Disconnected. Tap Connect."
+            return@LaunchedEffect
         }
 
-        // Update previous TTS state for the next evaluation
-        if (ttsPreviouslySpeaking.value != isTtsActuallySpeaking) {
-            ttsPreviouslySpeaking.value = isTtsActuallySpeaking
+        if (isLoading) {
+            if (isActuallyRecognizing) speechRecognizer.cancel()
+            isListeningUserIntent = false // Stop listening while AI is processing
+            isActuallyRecognizing = false
+            listeningStatusText = "Processing..."
+            return@LaunchedEffect
+        }
+
+        if (isTtsActuallySpeaking) {
+            if (isActuallyRecognizing) {
+                speechRecognizer.cancel()
+                isActuallyRecognizing = false
+            }
+            isListeningUserIntent = false // Ensure we are not listening when AI is speaking
+            listeningStatusText = "AI speaking..."
+            return@LaunchedEffect
+        }
+
+        // From here, TTS is NOT speaking and NOT loading.
+        // This is the point where we decide if we should automatically start listening.
+
+        if (didTtsJustStop) {
+            // AI just finished speaking, automatically start listening
+            Log.d("ConnectedAiScreen", "AI just finished speaking. Attempting to auto-start listening.")
+            if (hasAudioPermission) {
+                isListeningUserIntent = true // Set intent to true to allow startListeningInternal
+                // Give a small delay before starting to avoid cutting off last part of TTS
+                delay(200) // Small delay (e.g., 200ms)
+                startListeningInternal()
+            } else {
+                listeningStatusText = "AI finished. Tap Mic for Permission to speak."
+                isListeningUserIntent = false // Cannot listen without permission
+            }
+        } else if (!isListeningUserIntent && !isActuallyRecognizing) {
+            // Default state when AI is not speaking, not loading, and we are not currently listening
+            // This covers the initial state or when user manually stops listening.
+            listeningStatusText = "Tap Mic to Start Listening"
         }
     }
 
@@ -278,12 +280,12 @@ fun ConnectedAiScreen(
             Column(
                 modifier = Modifier.fillMaxSize().padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceAround 
+                verticalArrangement = Arrangement.SpaceAround
             ) {
                 RoboEyes(
-                    baseEyeSize = 100.dp, 
+                    baseEyeSize = 100.dp,
                     isAiSpeaking = isTtsActuallySpeaking,
-                    isListeningToUser = isActuallyRecognizing 
+                    isListeningToUser = isActuallyRecognizing
                 )
                 if (aiBuddyResponse.isNotEmpty()) {
                     Text(text = "AI Buddy: $aiBuddyResponse", style = MaterialTheme.typography.bodyLarge)
@@ -291,29 +293,46 @@ fun ConnectedAiScreen(
                 errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Text(text = listeningStatusText, style = MaterialTheme.typography.labelMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Button( 
+                    // Start Listening / Stop Listening Button
+                    Button(
                         onClick = {
-                            if (isListeningUserIntent) { 
+                            if (isListeningUserIntent) {
+                                // User wants to stop listening
                                 isListeningUserIntent = false
                                 if(isActuallyRecognizing) { speechRecognizer.stopListening(); isActuallyRecognizing = false }
                                 listeningStatusText = "Listening stopped. Tap Mic to Start."
-                            } else { 
-                                if (hasAudioPermission) { isListeningUserIntent = true; startListeningInternal() } 
-                                else { localPermissionLauncherState?.launch(Manifest.permission.RECORD_AUDIO) }
+                            } else {
+                                // User wants to start listening manually
+                                if (hasAudioPermission) {
+                                    isListeningUserIntent = true
+                                    startListeningInternal()
+                                } else {
+                                    localPermissionLauncherState?.launch(Manifest.permission.RECORD_AUDIO)
+                                }
                             }
                         },
-                        enabled = !isLoading && !isTtsActuallySpeaking 
+                        // Disabled if AI is speaking OR if AI is loading OR if already listening
+                        enabled = !isLoading && !isTtsActuallySpeaking && (!isListeningUserIntent || isActuallyRecognizing)
                     ) {
                         Icon(if (isListeningUserIntent) Icons.Filled.Stop else Icons.Filled.Mic, null)
                         Spacer(Modifier.size(ButtonDefaults.IconSpacing))
                         Text(if (isListeningUserIntent) "Stop Listening" else if (hasAudioPermission) "Start Listening" else "Mic Permission")
                     }
-                    Button(onClick = { homeViewModel.stopSpeaking() }, enabled = !isLoading && isTtsActuallySpeaking) {
+
+                    // Stop AI Talking Button
+                    Button(
+                        onClick = {
+                            homeViewModel.stopSpeaking()
+                            // No need to explicitly set isListeningUserIntent here,
+                            // the LaunchedEffect will react to isTtsActuallySpeaking becoming false
+                        },
+                        enabled = isTtsActuallySpeaking // Only enabled when AI is actively speaking
+                    ) {
                         Text("Stop AI Talk")
                     }
                 }
-                 Button(onClick = {
-                    homeViewModel.disconnect() // Use the new dedicated disconnect method
+                Button(onClick = {
+                    homeViewModel.disconnect()
                     navController.popBackStack()
                 }) {
                     Text("Disconnect & Back")
