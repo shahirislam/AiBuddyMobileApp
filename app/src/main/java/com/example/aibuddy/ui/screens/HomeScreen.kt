@@ -9,13 +9,18 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.aibuddy.ui.AnimatedEyes // Can keep for visual consistency or remove
 import com.example.aibuddy.viewmodel.HomeViewModel
+import androidx.compose.ui.platform.LocalContext // Added
+import androidx.activity.ComponentActivity // Added
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    homeViewModel: HomeViewModel = viewModel(),
+    // homeViewModel: HomeViewModel = viewModel(), // Old way
     onConnectClicked: () -> Unit
 ) {
+    val activity = LocalContext.current as ComponentActivity // Get activity
+    val homeViewModel: HomeViewModel = viewModel(viewModelStoreOwner = activity) // Scoped to Activity
+
     val isConnected by homeViewModel.isConnected.collectAsState()
     val isLoading by homeViewModel.isLoading.collectAsState() 
 
@@ -36,9 +41,8 @@ fun HomeScreen(
 
             Button(
                 onClick = {
-                    if (!isConnected) {
-                        homeViewModel.toggleConnection()
-                    }
+                    // Use the new method to ensure connection and greeting without toggling if already connected.
+                    homeViewModel.connectAndGreet()
                     onConnectClicked() 
                 },
                 modifier = Modifier.fillMaxWidth(0.7f),

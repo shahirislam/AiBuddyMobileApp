@@ -1,7 +1,7 @@
 package com.example.aibuddy.ui.screens
 
 import android.Manifest
-import android.app.Activity
+import android.app.Activity // Keep this for casting LocalContext.current if needed for other purposes
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
@@ -31,15 +31,19 @@ import com.example.aibuddy.viewmodel.HomeViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
+import androidx.activity.ComponentActivity // Added for ViewModel scoping
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConnectedAiScreen(
-    navController: NavController,
-    homeViewModel: HomeViewModel = viewModel()
+    navController: NavController
+    // homeViewModel: HomeViewModel = viewModel() // Old way, parameter removed
 ) {
     val context = LocalContext.current
-    val activity = context as? Activity
+    val componentActivity = context as ComponentActivity // For ViewModel scoping
+    val homeViewModel: HomeViewModel = viewModel(viewModelStoreOwner = componentActivity) // Scoped to Activity
+
+    val activity = context as? Activity // Can still be used if needed for specific Activity operations
     val coroutineScope = rememberCoroutineScope()
 
     val isConnected by homeViewModel.isConnected.collectAsState()
@@ -129,9 +133,9 @@ fun ConnectedAiScreen(
         val originalOrientation = activity?.requestedOrientation
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
 
-        if (!isConnected) { 
-            homeViewModel.toggleConnection()
-        } else if (!isListeningUserIntent && hasAudioPermission && !isTtsActuallySpeaking) {
+        // The connection is now expected to be handled by the screen that navigates here (HomeScreen).
+        // This screen will react to the established connection state, for example, to auto-start listening.
+        if (isConnected && !isListeningUserIntent && hasAudioPermission && !isTtsActuallySpeaking) {
             isListeningUserIntent = true
             startListeningInternal()
         }
@@ -259,7 +263,7 @@ fun ConnectedAiScreen(
                     }
                 }
                  Button(onClick = {
-                    if (isConnected) homeViewModel.toggleConnection() 
+                    homeViewModel.disconnect() // Use the new dedicated disconnect method
                     navController.popBackStack()
                 }) {
                     Text("Disconnect & Back")

@@ -25,7 +25,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), T
     private val _isTtsSpeaking = MutableStateFlow(false)
     val isTtsSpeaking: StateFlow<Boolean> = _isTtsSpeaking.asStateFlow()
 
+    // Flag to ensure greeting happens only once per connection session
+    private var hasGreetedThisSession = false
+
     init {
+        Log.i("HomeViewModel", "HomeViewModel instance created: ${this.hashCode()} (PID: ${android.os.Process.myPid()})") // Diagnostic log
         tts = TextToSpeech(application.applicationContext, this)
     }
 
@@ -67,7 +71,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), T
     private fun speak(text: String) {
         if (text.isBlank()) return
 
-        tts?.stop() 
+        tts?.stop()
         _isTtsSpeaking.value = true
 
         val utteranceId = System.currentTimeMillis().toString()
@@ -110,14 +114,54 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), T
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
-    fun toggleConnection() {
-        _isConnected.value = !_isConnected.value
-        if (!_isConnected.value) {
+    fun connectAndGreet() {
+        Log.i("HomeViewModel", "Instance ${this.hashCode()} - connectAndGreet called. Current isConnected: ${_isConnected.value}, hasGreeted: $hasGreetedThisSession")
+        if (!_isConnected.value) { // Only proceed if not already connected
+            _isConnected.value = true
+            Log.i("HomeViewModel", "Instance ${this.hashCode()} - connectAndGreet: Set isConnected to true.")
+            if (!hasGreetedThisSession) {
+                initiateAiGreeting()
+                hasGreetedThisSession = true
+                Log.i("HomeViewModel", "Instance ${this.hashCode()} - connectAndGreet: Initiated greeting and set hasGreetedThisSession to true.")
+            } else {
+                Log.i("HomeViewModel", "Instance ${this.hashCode()} - connectAndGreet: Already greeted this session.")
+            }
+        } else {
+            Log.i("HomeViewModel", "Instance ${this.hashCode()} - connectAndGreet: Already connected. Doing nothing.")
+        }
+        // If already connected, do nothing, preventing a toggle.
+    }
+
+    fun disconnect() {
+        Log.i("HomeViewModel", "Instance ${this.hashCode()} - disconnect() called. Current isConnected: ${_isConnected.value}")
+        if (_isConnected.value) { // Only if currently connected
+            _isConnected.value = false
+            Log.i("HomeViewModel", "Instance ${this.hashCode()} - disconnect: Set isConnected to false.")
             inputText = ""
             _aiBuddyResponse.value = ""
             _errorMessage.value = null
+            hasGreetedThisSession = false // Reset greeting flag
+            Log.i("HomeViewModel", "Instance ${this.hashCode()} - Disconnected by disconnect() call.")
+        }
+    }
+
+    // toggleConnection will now primarily act as a way to flip the state.
+    // For explicit connect with greeting, use connectAndGreet().
+    // For explicit disconnect, use disconnect().
+    fun toggleConnection() {
+        Log.i("HomeViewModel", "Instance ${this.hashCode()} - toggleConnection called. Current state isConnected: ${_isConnected.value}")
+        if (_isConnected.value) {
+            // If currently connected, toggle means disconnect.
+            disconnect()
         } else {
-            initiateAiGreeting()
+            // If currently disconnected, toggle means connect (but without the greeting logic here, connectAndGreet handles that).
+            // This path might be hit if something calls toggleConnection when already disconnected.
+            // We'll connect, but rely on hasGreetedThisSession to prevent re-greeting if it already happened.
+            _isConnected.value = true
+            Log.i("HomeViewModel", "Instance ${this.hashCode()} - toggleConnection: Transitioned to connected. Greeting will depend on hasGreetedThisSession.")
+            // No direct call to initiateAiGreeting() here to avoid conflicts with connectAndGreet's logic.
+            // If a greeting is needed, it should have been through connectAndGreet.
+            // If hasGreetedThisSession is false, a subsequent UI effect might trigger it if appropriate.
         }
     }
 
@@ -130,11 +174,18 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), T
             result.fold(
                 onSuccess = { responseText ->
                     _aiBuddyResponse.value = responseText
-                    if (responseText.isNotBlank()) speak(responseText)
+                    if (responseText.isNotBlank()) {
+                        speak(responseText)
+                    }
+                    // If greeting was blank or failed to speak, hasGreetedThisSession is still true.
+                    // This means it won't try again until a full disconnect/reconnect.
                 },
                 onFailure = { exception ->
                     _aiBuddyResponse.value = ""
                     _errorMessage.value = "Error initiating conversation: ${exception.localizedMessage}"
+                    // If greeting fails, hasGreetedThisSession is still true.
+                    // This prevents repeated attempts if the failure is persistent,
+                    // until a full disconnect and reconnect.
                 }
             )
             _isLoading.value = false
@@ -169,4 +220,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), T
             _isLoading.value = false
         }
     }
+
+    // Ensure that initiateAiGreeting also logs the instance
+    // This is already implicitly handled as other methods log the instance.
 }
