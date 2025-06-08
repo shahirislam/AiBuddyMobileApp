@@ -1,5 +1,7 @@
 [versions]
 agp = "8.2.2"
+googleCloudTexttospeech = "2.39.0"
+grpcOkhttp = "1.58.0"
 kotlin = "2.0.21"
 coreKtx = "1.12.0"
 junit = "4.13.2"
@@ -17,6 +19,8 @@ navigationCompose = "2.7.7"
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 
 # Testing - JUnit
+google-cloud-texttospeech = { module = "com.google.cloud:google-cloud-texttospeech", version.ref = "googleCloudTexttospeech" }
+grpc-okhttp = { module = "io.grpc:grpc-okhttp", version.ref = "grpcOkhttp" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxJunit" }
 

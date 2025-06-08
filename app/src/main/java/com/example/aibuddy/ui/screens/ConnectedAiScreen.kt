@@ -51,6 +51,7 @@ fun ConnectedAiScreen(
     val isLoading by homeViewModel.isLoading.collectAsState()
     val errorMessage by homeViewModel.errorMessage.collectAsState()
     val isTtsActuallySpeaking by homeViewModel.isTtsSpeaking.collectAsState()
+    val currentInputText = homeViewModel.inputText // Changed to direct assignment
 
     var hasAudioPermission by remember {
         mutableStateOf(
@@ -135,9 +136,11 @@ fun ConnectedAiScreen(
 
         // The connection is now expected to be handled by the screen that navigates here (HomeScreen).
         // This screen will react to the established connection state, for example, to auto-start listening.
-        if (isConnected && !isListeningUserIntent && hasAudioPermission && !isTtsActuallySpeaking) {
-            isListeningUserIntent = true
-            startListeningInternal()
+        if (isConnected && hasAudioPermission && !isTtsActuallySpeaking && !isLoading) { // Added !isLoading
+            if (!isListeningUserIntent) {
+                isListeningUserIntent = true
+                startListeningInternal()
+            }
         }
 
         onDispose {
@@ -202,24 +205,71 @@ fun ConnectedAiScreen(
         onDispose { speechRecognizer.destroy() }
     }
 
-    LaunchedEffect(isTtsActuallySpeaking, isListeningUserIntent, isConnected, hasAudioPermission) {
-        if (isConnected) {
-            if (isTtsActuallySpeaking) {
-                if (isActuallyRecognizing) { speechRecognizer.cancel(); isActuallyRecognizing = false }
-                listeningStatusText = "AI speaking..."
-            } else {
-                if (isListeningUserIntent && hasAudioPermission && !isActuallyRecognizing && !isLoading) {
-                    startListeningInternal()
-                } else if (!isListeningUserIntent && !isActuallyRecognizing) {
-                     if (hasAudioPermission) listeningStatusText = "Tap Mic to Start Listening"
+    // Helper to track previous value of isTtsActuallySpeaking to detect when it stops
+    val ttsPreviouslySpeaking = remember { mutableStateOf(isTtsActuallySpeaking) }
 
+    LaunchedEffect(
+        isTtsActuallySpeaking,
+        isListeningUserIntent, // User's explicit intent (button press)
+        isConnected,
+        hasAudioPermission,
+        isLoading
+    ) {
+        val didTtsJustStop = ttsPreviouslySpeaking.value && !isTtsActuallySpeaking
+
+        if (isConnected) {
+            if (isTtsActuallySpeaking) { // AI is actively speaking
+                if (isActuallyRecognizing) { // If STT is somehow active, cancel it
+                    speechRecognizer.cancel()
+                    isActuallyRecognizing = false
+                }
+                listeningStatusText = "AI speaking..."
+            } else { // AI is NOT speaking
+                if (hasAudioPermission && !isLoading) {
+                    // Auto-restart logic: If TTS just stopped and user isn't already intending to listen, set the intent.
+                    if (didTtsJustStop && !isListeningUserIntent) {
+                        isListeningUserIntent = true // Set user intent to listen. Effect will re-run.
+                    }
+
+                    if (isListeningUserIntent) { // User intends to listen (either manually or auto-set)
+                        if (!isActuallyRecognizing) {
+                            startListeningInternal() // This function has its own guards
+                        }
+                        // If isActuallyRecognizing is true, listeningStatusText is handled by RecognitionListener
+                    } else { // User does NOT intend to listen (e.g., pressed Stop or never started)
+                        if (!isActuallyRecognizing) { // Ensure not stuck in a recognizing state
+                           listeningStatusText = "Tap Mic to Start Listening"
+                        }
+                    }
+                } else if (!hasAudioPermission && !isLoading) {
+                    // Update status text based on whether user intent was active before permission issue
+                    listeningStatusText = if (isListeningUserIntent && !isActuallyRecognizing) {
+                        "Listening stopped (Permission Denied)"
+                    } else {
+                        "Tap Mic for Permission"
+                    }
+                } else if (isLoading) {
+                    // If loading (e.g., AI processing), ensure STT is stopped.
+                    if (isActuallyRecognizing) {
+                        speechRecognizer.cancel() 
+                        isActuallyRecognizing = false
+                    }
+                    // Using the collected state: currentInputText
+                    listeningStatusText = if (aiBuddyResponse.isNotEmpty() && (currentInputText?.isNotEmpty() == true)) "AI Responding..." else "Processing..."
                 }
             }
-        } else {
-            if(isActuallyRecognizing) speechRecognizer.cancel()
+        } else { // Not connected
+            if (isActuallyRecognizing) {
+                speechRecognizer.cancel()
+            }
             isListeningUserIntent = false
             isActuallyRecognizing = false
             listeningStatusText = "Disconnected. Tap Connect."
+        }
+
+        // Update previous TTS state for the next evaluation
+        if (ttsPreviouslySpeaking.value != isTtsActuallySpeaking) {
+            ttsPreviouslySpeaking.value = isTtsActuallySpeaking
         }
     }
 

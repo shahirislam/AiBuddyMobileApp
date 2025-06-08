@@ -7,96 +7,56 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.aibuddy.data.AiBuddyRepository
+import com.example.aibuddy.texttospeech.TextToSpeechManager // Added
 import kotlinx.coroutines.flow.MutableStateFlow
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
-import android.os.Bundle
 import android.util.Log
-import java.util.Locale
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class HomeViewModel(application: Application) : AndroidViewModel(application), TextToSpeech.OnInitListener {
+class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: AiBuddyRepository = AiBuddyRepository()
 
-    private var tts: TextToSpeech? = null
+    private var textToSpeechManager: TextToSpeechManager? = null
     private val _isTtsSpeaking = MutableStateFlow(false)
     val isTtsSpeaking: StateFlow<Boolean> = _isTtsSpeaking.asStateFlow()
 
     // Flag to ensure greeting happens only once per connection session
     private var hasGreetedThisSession = false
 
+    // API Key field removed as we are now using Service Account JSON
+
     init {
         Log.i("HomeViewModel", "HomeViewModel instance created: ${this.hashCode()} (PID: ${android.os.Process.myPid()})") // Diagnostic log
-        tts = TextToSpeech(application.applicationContext, this)
-    }
-
-    override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) {
-            val result = tts?.setLanguage(Locale.US)
-            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                Log.e("TTS", "The Language (US English) specified is not supported or language data is missing.")
-            } else {
-                Log.i("TTS", "TTS Initialized successfully with US English.")
-            }
-            tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) {
-                    _isTtsSpeaking.value = true
-                    Log.d("TTS", "onStart: $utteranceId")
-                }
-
-                override fun onDone(utteranceId: String?) {
-                    _isTtsSpeaking.value = false
-                    Log.d("TTS", "onDone: $utteranceId")
-                }
-
-                @Deprecated("deprecated")
-                override fun onError(utteranceId: String?) {
-                    _isTtsSpeaking.value = false
-                    Log.e("TTS", "onError (deprecated): $utteranceId")
-                }
-
-                override fun onError(utteranceId: String?, errorCode: Int) {
-                    _isTtsSpeaking.value = false
-                    Log.e("TTS", "onError: $utteranceId, errorCode: $errorCode")
-                }
-            })
-        } else {
-            Log.e("TTS", "TTS Initialization Failed!")
-        }
+        textToSpeechManager = TextToSpeechManager(application.applicationContext) // API Key parameter removed
+        // The TextToSpeechManager initializes asynchronously using the service_account_key.json.
+        // We'll manage _isTtsSpeaking when speak() and stopSpeaking() are called.
     }
 
     private fun speak(text: String) {
-        if (text.isBlank()) return
-
-        tts?.stop()
-        _isTtsSpeaking.value = true
-
-        val utteranceId = System.currentTimeMillis().toString()
-        val params = Bundle().apply {
-            putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
+        if (text.isBlank()) {
+            Log.w("TTS", "Speak called with blank text.")
+            return
         }
-        Log.d("TTS", "Attempting to speak: '$text' with ID: $utteranceId")
-        val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
-        if (result == TextToSpeech.ERROR) {
-            Log.e("TTS", "Error in tts.speak for utteranceId $utteranceId")
-            _isTtsSpeaking.value = false
-        }
+        _isTtsSpeaking.value = true // Assume speaking starts immediately for UI feedback
+        Log.d("TTS", "Attempting to speak: '$text' using Google Cloud TTS")
+        textToSpeechManager?.speak(text)
+        // Note: The actual start and stop of speech is handled within TextToSpeechManager.
+        // For more accurate _isTtsSpeaking, TextToSpeechManager would need to provide callbacks.
+        // For now, stopSpeaking() will set _isTtsSpeaking to false.
     }
 
     fun stopSpeaking() {
-        tts?.stop()
-        _isTtsSpeaking.value = false
-        Log.i("TTS", "TTS manually stopped by user.")
+        textToSpeechManager?.stopSpeaking()
+        _isTtsSpeaking.value = false // Manually set to false when stopping
+        Log.i("TTS", "TTS manually stopped by user (or playback finished).")
     }
 
     override fun onCleared() {
         super.onCleared()
-        tts?.stop()
-        tts?.shutdown()
-        Log.i("TTS", "TTS Shutdown.")
+        textToSpeechManager?.shutdown()
+        Log.i("TTS", "TextToSpeechManager Shutdown.")
     }
 
     private val _isConnected = MutableStateFlow(false)
