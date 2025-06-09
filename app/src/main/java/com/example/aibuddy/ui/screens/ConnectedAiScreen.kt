@@ -337,6 +337,11 @@ fun ConnectedAiScreen(
                 }) {
                     Text("Disconnect & Back")
                 }
+                Button(onClick = {
+                    navController.navigate(com.example.aibuddy.AppDestinations.CONTEXT_MANAGEMENT_ROUTE)
+                }) {
+                    Text("Manage Context")
+                }
             }
         }
     }

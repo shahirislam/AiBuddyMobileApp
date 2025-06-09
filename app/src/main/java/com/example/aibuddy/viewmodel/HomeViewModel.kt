@@ -7,16 +7,20 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.aibuddy.data.AiBuddyRepository
+import com.example.aibuddy.data.local.ConversationTopic
+import com.example.aibuddy.data.local.UserFact
 import com.example.aibuddy.texttospeech.TextToSpeechManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import android.util.Log
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository: AiBuddyRepository = AiBuddyRepository()
+    private val repository: AiBuddyRepository = AiBuddyRepository(application)
 
     private var textToSpeechManager: TextToSpeechManager? = null
     private val _isTtsSpeaking = MutableStateFlow(false)
@@ -83,6 +87,24 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    val userFacts: StateFlow<List<UserFact>> = repository.getAllUserFacts()
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val conversationTopics: StateFlow<List<ConversationTopic>> = repository.getAllConversationTopics()
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    fun deleteUserFact(id: Int) {
+        viewModelScope.launch {
+            repository.deleteUserFact(id)
+        }
+    }
+
+    fun deleteConversationTopic(id: Int) {
+        viewModelScope.launch {
+            repository.deleteConversationTopic(id)
+        }
+    }
 
     fun connectAndGreet() {
         Log.i("HomeViewModel", "Instance ${this.hashCode()} - connectAndGreet called. Current isConnected: ${_isConnected.value}, hasGreeted: $hasGreetedThisSession")

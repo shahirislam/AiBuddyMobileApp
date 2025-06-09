@@ -7,6 +7,7 @@ import org.gradle.api.JavaVersion
         alias(libs.plugins.android.application)
         alias(libs.plugins.kotlin.android)
         alias(libs.plugins.kotlin.compose)
+        id("com.google.devtools.ksp")
     }
 configurations.all {
     resolutionStrategy {
@@ -106,4 +107,9 @@ implementation("io.grpc:grpc-okhttp:1.63.2")
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
     implementation(libs.google.cloud.texttospeech)
+
+    // Room Database
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 }

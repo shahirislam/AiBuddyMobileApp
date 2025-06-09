@@ -17,6 +17,7 @@ object AppDestinations {
     const val SPLASH_ROUTE = "splash"
     const val HOME_ROUTE = "home"
     const val CONNECTED_AI_ROUTE = "connected_ai"
+    const val CONTEXT_MANAGEMENT_ROUTE = "context_management"
 }
 
 class MainActivity : ComponentActivity() {
@@ -46,6 +47,9 @@ class MainActivity : ComponentActivity() {
                     }
                     composable(AppDestinations.CONNECTED_AI_ROUTE) {
                         ConnectedAiScreen(navController = navController)
+                    }
+                    composable(AppDestinations.CONTEXT_MANAGEMENT_ROUTE) {
+                        com.example.aibuddy.ui.screens.ContextManagementScreen(navController = navController)
                     }
                 }
             }
