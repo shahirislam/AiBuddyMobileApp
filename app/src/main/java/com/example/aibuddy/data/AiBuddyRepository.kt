@@ -25,7 +25,7 @@ class AiBuddyRepository(application: Application) {
             temperature = 0.9f
             topK = 1
             topP = 1f
-            maxOutputTokens = 512
+            maxOutputTokens = 256
         }
 
         val systemInstruction = content(role = "system") {
@@ -40,6 +40,7 @@ class AiBuddyRepository(application: Application) {
                 Instead, gently build on what the user says to keep the flow going. 
                 Your tone should be caring, light-hearted, and conversational. 
                 Responses should be concise but expressive—prioritize being emotionally present and engaging over brevity or perfection.
+                IMPORTANT: Keep your responses short and conversational. Aim for 1-3 sentences, and generally under 200 characters.
                 
                 You have access to the user's personal information and past conversation topics. Use this context to personalize your responses.
                 
