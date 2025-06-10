@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.aibuddy.data.AiBuddyRepository
+import com.example.aibuddy.data.local.Conversation
 import com.example.aibuddy.data.local.ConversationTopic
 import com.example.aibuddy.data.local.UserFact
 import com.example.aibuddy.texttospeech.TextToSpeechManager
@@ -94,6 +95,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     val conversationTopics: StateFlow<List<ConversationTopic>> = repository.getAllConversationTopics()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    val recentConversations: StateFlow<List<Conversation>> = repository.getRecentConversations()
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
     fun deleteUserFact(id: Int) {
         viewModelScope.launch {
             repository.deleteUserFact(id)
@@ -103,6 +107,22 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteConversationTopic(id: Int) {
         viewModelScope.launch {
             repository.deleteConversationTopic(id)
+        }
+    }
+
+    fun addConversation(conversationHistory: String, durationInMinutes: Int) {
+        viewModelScope.launch {
+            val rawTitle = repository.generateConversationTitle(conversationHistory).getOrDefault("New Conversation")
+            val cleanedTitle = rawTitle.replace(Regex(".*?"), "")
+                .trim() // Remove leading/trailing whitespace after cleaning
+
+            repository.insertConversation(
+                Conversation(
+                    title = cleanedTitle, // Use the cleaned title
+                    timestamp = System.currentTimeMillis(),
+                    durationInMinutes = durationInMinutes
+                )
+            )
         }
     }
 

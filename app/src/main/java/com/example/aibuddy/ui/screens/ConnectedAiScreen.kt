@@ -51,6 +51,14 @@ fun ConnectedAiScreen(
     val errorMessage by homeViewModel.errorMessage.collectAsState()
     val isTtsActuallySpeaking by homeViewModel.isTtsSpeaking.collectAsState()
 
+    var conversationStartTime by remember { mutableStateOf(0L) }
+    val conversationHistory = remember { mutableStateListOf<String>() }
+
+    LaunchedEffect(Unit) {
+        homeViewModel.connectAndGreet()
+        conversationStartTime = System.currentTimeMillis()
+    }
+
     var hasAudioPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -197,7 +205,9 @@ fun ConnectedAiScreen(
                 isActuallyRecognizing = false
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (!matches.isNullOrEmpty() && matches[0].isNotBlank()) {
-                    homeViewModel.updateInputText(matches[0])
+                    val userMessage = matches[0]
+                    conversationHistory.add("User: $userMessage")
+                    homeViewModel.updateInputText(userMessage)
                     homeViewModel.sendMessage()
                     listeningStatusText = "Message sent. AI responding..."
                     isListeningUserIntent = false // User's turn is over, AI will speak next
@@ -289,6 +299,9 @@ fun ConnectedAiScreen(
                 )
                 if (aiBuddyResponse.isNotEmpty()) {
                     Text(text = "AI Buddy: $aiBuddyResponse", style = MaterialTheme.typography.bodyLarge)
+                    LaunchedEffect(aiBuddyResponse) {
+                        conversationHistory.add("AI: $aiBuddyResponse")
+                    }
                 }
                 errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Text(text = listeningStatusText, style = MaterialTheme.typography.labelMedium)
@@ -332,6 +345,8 @@ fun ConnectedAiScreen(
                     }
                 }
                 Button(onClick = {
+                    val durationInMinutes = ((System.currentTimeMillis() - conversationStartTime) / 60000).toInt()
+                    homeViewModel.addConversation(conversationHistory.joinToString("\n"), durationInMinutes)
                     homeViewModel.disconnect()
                     navController.popBackStack()
                 }) {

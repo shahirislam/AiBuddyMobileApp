@@ -3,6 +3,7 @@ package com.example.aibuddy.data
 import android.app.Application
 import com.example.aibuddy.BuildConfig
 import com.example.aibuddy.data.local.AppDatabase
+import com.example.aibuddy.data.local.Conversation
 import com.example.aibuddy.data.local.ConversationTopic
 import com.example.aibuddy.data.local.UserFact
 import com.google.ai.client.generativeai.GenerativeModel
@@ -16,6 +17,7 @@ class AiBuddyRepository(application: Application) {
     private val generativeModel: GenerativeModel
     private val userFactDao = AppDatabase.getDatabase(application).userFactDao()
     private val conversationTopicDao = AppDatabase.getDatabase(application).conversationTopicDao()
+    private val conversationDao = AppDatabase.getDatabase(application).conversationDao()
 
     init {
         val geminiApiKey = BuildConfig.GEMINI_API_KEY
@@ -131,10 +133,32 @@ class AiBuddyRepository(application: Application) {
             }
         }
     }
-    
+
     fun getAllUserFacts() = userFactDao.getAllUserFacts()
     fun getAllConversationTopics() = conversationTopicDao.getAllConversationTopics()
     suspend fun insertUserFact(userFact: UserFact) = userFactDao.insertUserFact(userFact)
     suspend fun deleteUserFact(id: Int) = userFactDao.deleteUserFactById(id)
     suspend fun deleteConversationTopic(id: Int) = conversationTopicDao.deleteConversationTopicById(id)
+
+    fun getRecentConversations() = conversationDao.getRecentConversations()
+    suspend fun insertConversation(conversation: Conversation) = conversationDao.insertConversation(conversation)
+
+    suspend fun generateConversationTitle(conversationHistory: String): Result<String> {
+        return try {
+            val prompt = "Based on the following conversation, generate ONLY a short, concise, 2-5 word title. Do NOT include any additional text, punctuation (except apostrophes), or special characters. Provide only the title.\n\nConversation:\n$conversationHistory"
+
+            val response = generativeModel.generateContent(prompt)
+            val rawTitle = response.text ?: "New Conversation"
+
+            val cleanedTitle = rawTitle
+                .replace(Regex(".*?"), "")
+                .replace("\"", "")
+                .replace("Title:", "", ignoreCase = true)
+                .replace(Regex("[^a-zA-Z0-9\\s']"), "")
+                .trim()
+            Result.success(cleanedTitle.ifBlank { "New Conversation" })
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }

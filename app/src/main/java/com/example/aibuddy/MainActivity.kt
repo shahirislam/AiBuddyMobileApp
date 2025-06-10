@@ -21,6 +21,8 @@ object AppDestinations {
     const val HOME_ROUTE = "home"
     const val CONNECTED_AI_ROUTE = "connected_ai"
     const val CONTEXT_MANAGEMENT_ROUTE = "context_management"
+    const val CHATS_ROUTE = "chats"
+    const val SETTINGS_ROUTE = "settings"
 }
 
 class MainActivity : ComponentActivity() {
@@ -42,17 +44,19 @@ class MainActivity : ComponentActivity() {
                         OnboardingScreen(navController = navController)
                     }
                     composable(AppDestinations.HOME_ROUTE) {
-                        HomeScreen(
-                            onConnectClicked = {
-                                navController.navigate(AppDestinations.CONNECTED_AI_ROUTE)
-                            }
-                        )
+                        HomeScreen(navController = navController)
                     }
                     composable(AppDestinations.CONNECTED_AI_ROUTE) {
                         ConnectedAiScreen(navController = navController)
                     }
                     composable(AppDestinations.CONTEXT_MANAGEMENT_ROUTE) {
                         com.example.aibuddy.ui.screens.ContextManagementScreen(navController = navController)
+                    }
+                    composable(AppDestinations.CHATS_ROUTE) {
+                        // TODO: Create ChatsScreen
+                    }
+                    composable(AppDestinations.SETTINGS_ROUTE) {
+                        // TODO: Create SettingsScreen
                     }
                 }
             }
