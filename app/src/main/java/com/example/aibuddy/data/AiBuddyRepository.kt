@@ -134,6 +134,7 @@ class AiBuddyRepository(application: Application) {
     
     fun getAllUserFacts() = userFactDao.getAllUserFacts()
     fun getAllConversationTopics() = conversationTopicDao.getAllConversationTopics()
+    suspend fun insertUserFact(userFact: UserFact) = userFactDao.insertUserFact(userFact)
     suspend fun deleteUserFact(id: Int) = userFactDao.deleteUserFactById(id)
     suspend fun deleteConversationTopic(id: Int) = conversationTopicDao.deleteConversationTopicById(id)
 }

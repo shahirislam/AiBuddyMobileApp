@@ -112,4 +112,6 @@ implementation("io.grpc:grpc-okhttp:1.63.2")
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+
+    implementation("com.google.accompanist:accompanist-flowlayout:0.28.0")
 }
