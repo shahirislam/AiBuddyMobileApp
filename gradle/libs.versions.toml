@@ -58,7 +58,7 @@ androidx-navigation-compose = { group = "androidx.navigation", name = "navigatio
 
 # Compose Testing - These also typically don't need versions with BOM
 androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
-androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4", version.ref = "composeBom" }
 
 # Gemini API
 google-ai-generativeai = { group = "com.google.ai.client.generativeai", name = "generativeai", version.ref = "generativeai" } # Corrected group ID

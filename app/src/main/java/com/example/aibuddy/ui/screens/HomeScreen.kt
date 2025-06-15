@@ -152,7 +152,7 @@ private fun ConversationItem(conversation: Conversation) {
                 color = MaterialTheme.colorScheme.primary
             )
         }
-        Divider()
+        HorizontalDivider()
     }
 }
 
