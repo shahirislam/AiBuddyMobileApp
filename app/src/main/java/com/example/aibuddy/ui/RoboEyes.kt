@@ -1,8 +1,6 @@
 package com.example.aibuddy.ui
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -32,13 +30,24 @@ fun RoboEyes(
     pupilRadiusFactor: Float = 0.3f
 ) {
     val animatedEyeSize by animateDpAsState(
-        targetValue = when {
-            isAiSpeaking -> baseEyeSize * 1.2f
-            isListeningToUser -> baseEyeSize * 1.1f
-            else -> baseEyeSize
-        },
+        targetValue = if (isAiSpeaking) baseEyeSize * 1.2f else baseEyeSize,
         animationSpec = tween(durationMillis = 300), label = "eyeSizeAnimation"
     )
+
+    val listeningPupilScale = remember { Animatable(1f) }
+    LaunchedEffect(isListeningToUser) {
+        if (isListeningToUser) {
+            listeningPupilScale.animateTo(
+                targetValue = 1.2f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1000),
+                    repeatMode = RepeatMode.Reverse
+                )
+            )
+        } else {
+            listeningPupilScale.snapTo(1f)
+        }
+    }
 
     val blinkOpenValue = 1.0f
     val blinkClosedValue = 0.1f
@@ -60,13 +69,15 @@ fun RoboEyes(
             eyeSize = animatedEyeSize,
             pupilRadiusFactor = pupilRadiusFactor,
             cornerRadius = eyeCornerRadius,
-            blinkFactor = eyeBlinkFactor.value
+            blinkFactor = eyeBlinkFactor.value,
+            listeningScale = listeningPupilScale.value
         )
         SingleRoboEye(
             eyeSize = animatedEyeSize,
             pupilRadiusFactor = pupilRadiusFactor,
             cornerRadius = eyeCornerRadius,
-            blinkFactor = eyeBlinkFactor.value
+            blinkFactor = eyeBlinkFactor.value,
+            listeningScale = listeningPupilScale.value
         )
     }
 }
@@ -77,7 +88,8 @@ fun SingleRoboEye(
     eyeSize: Dp,
     pupilRadiusFactor: Float,
     cornerRadius: Dp,
-    blinkFactor: Float
+    blinkFactor: Float,
+    listeningScale: Float
 ) {
     Canvas(modifier = modifier.size(eyeSize)) {
         val sizePx = eyeSize.toPx()
@@ -96,7 +108,7 @@ fun SingleRoboEye(
         )
 
         if (blinkFactor > 0.15f) {
-            val pupilRadius = (sizePx / 2) * pupilRadiusFactor
+            val pupilRadius = (sizePx / 2) * pupilRadiusFactor * listeningScale
             val pupilCenterY = verticalOffset + (eyeDisplayHeight / 2)
             drawCircle(
                 color = pupilColor,

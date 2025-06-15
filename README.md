@@ -102,6 +102,13 @@ Once the keys are configured, you can build and run the app.
 3.  Run the app on an emulator or a physical device.
 4.  Grant the microphone permission when prompted.
 
-## 📄 License
+## � Future Features
+
+-   **Email Integration:** Connect to Gmail to read, summarize, and draft emails.
+-   **Music Integration:** Play music from Spotify or YouTube Music directly within the app.
+-   **Calendar Integration:** Read and manage calendar events.
+-   **Deeper Contextual Awareness:** Improve the AI's ability to understand and remember long-term conversation history.
+
+## �📄 License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

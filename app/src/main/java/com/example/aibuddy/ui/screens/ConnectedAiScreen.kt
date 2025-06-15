@@ -48,11 +48,11 @@ fun ConnectedAiScreen(
     val isConnected by homeViewModel.isConnected.collectAsState()
     val aiBuddyResponse by homeViewModel.aiBuddyResponse.collectAsState()
     val isLoading by homeViewModel.isLoading.collectAsState()
+    val isSearching by homeViewModel.isSearching.collectAsState()
     val errorMessage by homeViewModel.errorMessage.collectAsState()
     val isTtsActuallySpeaking by homeViewModel.isTtsSpeaking.collectAsState()
 
     var conversationStartTime by remember { mutableStateOf(0L) }
-    val conversationHistory = remember { mutableStateListOf<String>() }
 
     LaunchedEffect(Unit) {
         homeViewModel.connectAndGreet()
@@ -83,8 +83,8 @@ fun ConnectedAiScreen(
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US.toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 8000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 8000L)
         }
     }
 
@@ -206,7 +206,6 @@ fun ConnectedAiScreen(
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (!matches.isNullOrEmpty() && matches[0].isNotBlank()) {
                     val userMessage = matches[0]
-                    conversationHistory.add("User: $userMessage")
                     homeViewModel.updateInputText(userMessage)
                     homeViewModel.sendMessage()
                     listeningStatusText = "Message sent. AI responding..."
@@ -297,11 +296,10 @@ fun ConnectedAiScreen(
                     isAiSpeaking = isTtsActuallySpeaking,
                     isListeningToUser = isActuallyRecognizing
                 )
-                if (aiBuddyResponse.isNotEmpty()) {
+                if (isSearching) {
+                    Text("Searching the web...", style = MaterialTheme.typography.bodyLarge)
+                } else if (aiBuddyResponse.isNotEmpty()) {
                     Text(text = "AI Buddy: $aiBuddyResponse", style = MaterialTheme.typography.bodyLarge)
-                    LaunchedEffect(aiBuddyResponse) {
-                        conversationHistory.add("AI: $aiBuddyResponse")
-                    }
                 }
                 errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Text(text = listeningStatusText, style = MaterialTheme.typography.labelMedium)
@@ -346,7 +344,7 @@ fun ConnectedAiScreen(
                 }
                 Button(onClick = {
                     val durationInMinutes = ((System.currentTimeMillis() - conversationStartTime) / 60000).toInt()
-                    homeViewModel.addConversation(conversationHistory.joinToString("\n"), durationInMinutes)
+                    homeViewModel.addConversation(homeViewModel.conversationHistory.joinToString("\n"), durationInMinutes)
                     homeViewModel.disconnect()
                     navController.popBackStack()
                 }) {

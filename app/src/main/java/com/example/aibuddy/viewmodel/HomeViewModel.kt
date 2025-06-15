@@ -2,6 +2,7 @@ package com.example.aibuddy.viewmodel
 
 import android.app.Application
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
@@ -26,6 +27,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private var textToSpeechManager: TextToSpeechManager? = null
     private val _isTtsSpeaking = MutableStateFlow(false)
     val isTtsSpeaking: StateFlow<Boolean> = _isTtsSpeaking.asStateFlow()
+
+    private val _conversationHistory = mutableStateListOf<String>()
+    val conversationHistory: List<String> = _conversationHistory
 
     // Flag to ensure greeting happens only once per connection session
     private var hasGreetedThisSession = false
@@ -86,6 +90,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val _isSearching = MutableStateFlow(false)
+    val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
+
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
@@ -112,13 +119,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addConversation(conversationHistory: String, durationInMinutes: Int) {
         viewModelScope.launch {
-            val rawTitle = repository.generateConversationTitle(conversationHistory).getOrDefault("New Conversation")
-            val cleanedTitle = rawTitle.replace(Regex(".*?"), "")
-                .trim() // Remove leading/trailing whitespace after cleaning
-
+            val title = repository.generateConversationTitle(conversationHistory).getOrDefault("New Conversation")
             repository.insertConversation(
                 Conversation(
-                    title = cleanedTitle, // Use the cleaned title
+                    title = title,
                     timestamp = System.currentTimeMillis(),
                     durationInMinutes = durationInMinutes
                 )
@@ -151,6 +155,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             _aiBuddyResponse.value = ""
             _errorMessage.value = null
             hasGreetedThisSession = false
+            _conversationHistory.clear()
             stopSpeaking() // Ensure TTS is stopped and _isTtsSpeaking is false via callback
             Log.i("HomeViewModel", "Instance ${this.hashCode()} - Disconnected by disconnect() call.")
         }
@@ -171,21 +176,22 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             _isLoading.value = true
             _errorMessage.value = null
             val initialPrompt = "You are AiBuddy, a friendly and empathetic AI companion. Start a short, welcoming conversation with the user. For example, ask them how they are doing, what they are up to, or mention something interesting to break the ice. Keep your initial message concise."
-            val result = repository.generateContent(initialPrompt)
+            val result = repository.generateContent(initialPrompt, _conversationHistory.toList())
             result.fold(
                 onSuccess = { responseText ->
-                    _aiBuddyResponse.value = responseText
-                    if (responseText.isNotBlank()) {
-                        speak(responseText)
+                    val cleanResponse = responseText.substringBefore("<!--JSON_START-->").trim()
+                    _aiBuddyResponse.value = cleanResponse
+                    if (cleanResponse.isNotBlank()) {
+                        _conversationHistory.add("AI: $cleanResponse")
+                        speak(cleanResponse)
                     } else {
-                        Log.w("HomeViewModel", "AI greeting response is blank. No speech will be generated.")
-                        _isTtsSpeaking.value = false // Explicitly set to false if no speech
+                        _isTtsSpeaking.value = false
                     }
                 },
                 onFailure = { exception ->
                     _aiBuddyResponse.value = ""
                     _errorMessage.value = "Error initiating conversation: ${exception.localizedMessage}"
-                    _isTtsSpeaking.value = false // Ensure TTS speaking state is false on error
+                    _isTtsSpeaking.value = false
                 }
             )
             _isLoading.value = false
@@ -205,22 +211,48 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
-            val result = repository.generateContent(inputText)
+            _conversationHistory.add("User: $inputText")
+            val result = repository.generateContent(inputText, _conversationHistory.toList())
             result.fold(
                 onSuccess = { responseText ->
-                    _aiBuddyResponse.value = responseText
-                    if (responseText.isNotBlank()) {
-                        speak(responseText)
+                    if (responseText.contains("<!--SEARCH_QUERY:")) {
+                        val searchQuery = responseText.substringAfter("<!--SEARCH_QUERY:").substringBefore("-->").trim()
+                        _isSearching.value = true
+                        val searchResult = repository.searchAndGenerateContent(searchQuery, inputText)
+                        searchResult.fold(
+                            onSuccess = { searchResponse ->
+                                val cleanSearchResponse = searchResponse.substringBefore("<!--JSON_START-->").trim()
+                                _aiBuddyResponse.value = cleanSearchResponse
+                                if (cleanSearchResponse.isNotBlank()) {
+                                    _conversationHistory.add("AI: $cleanSearchResponse")
+                                    speak(cleanSearchResponse)
+                                } else {
+                                    _isTtsSpeaking.value = false
+                                }
+                            },
+                            onFailure = { exception ->
+                                _aiBuddyResponse.value = ""
+                                _errorMessage.value = "Error: ${exception.localizedMessage}"
+                                _isTtsSpeaking.value = false
+                            }
+                        )
+                        _isSearching.value = false
                     } else {
-                        Log.w("HomeViewModel", "AI response for message is blank. No speech will be generated.")
-                        _isTtsSpeaking.value = false // Explicitly set to false if no speech
+                        val cleanResponse = responseText.substringBefore("<!--JSON_START-->").trim()
+                        _aiBuddyResponse.value = cleanResponse
+                        if (cleanResponse.isNotBlank()) {
+                            _conversationHistory.add("AI: $cleanResponse")
+                            speak(cleanResponse)
+                        } else {
+                            _isTtsSpeaking.value = false
+                        }
                     }
                     inputText = ""
                 },
                 onFailure = { exception ->
                     _aiBuddyResponse.value = ""
                     _errorMessage.value = "Error: ${exception.localizedMessage}"
-                    _isTtsSpeaking.value = false // Ensure TTS speaking state is false on error
+                    _isTtsSpeaking.value = false
                 }
             )
             _isLoading.value = false

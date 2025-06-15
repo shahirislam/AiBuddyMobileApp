@@ -11,6 +11,8 @@ import com.google.ai.client.generativeai.type.generationConfig
 import com.google.ai.client.generativeai.type.content
 import kotlinx.coroutines.flow.first
 import org.json.JSONObject
+import java.net.URL
+import java.net.URLEncoder
 
 class AiBuddyRepository(application: Application) {
 
@@ -41,8 +43,10 @@ class AiBuddyRepository(application: Application) {
                 Your tone should be caring, light-hearted, and conversational. 
                 Responses should be concise but expressive—prioritize being emotionally present and engaging over brevity or perfection.
                 IMPORTANT: Keep your responses short and conversational. Aim for 1-3 sentences, and generally under 200 characters.
+
+                If the user asks a question that you cannot answer from your own knowledge, first try to answer it. If you cannot, you can perform a web search. To do this, end your response with the following special token: `<!--SEARCH_QUERY: [your search query]-->`. For example: `I can look that up for you. <!--SEARCH_QUERY: latest news on AI-->`
                 
-                You have access to the user's personal information and past conversation topics. Use this context to personalize your responses.
+                You have access to the user's personal information and past conversation topics. Use this context to personalize your responses. When the user asks a question, ALWAYS check the provided context first. If the answer is in the context, use it directly. Do not ask clarifying questions if the information is already available in the context.
                 
                 When you learn a new fact about the user (e.g., their name, interests, work), or a new conversation topic emerges, you MUST embed this information in a structured JSON format at the end of your response.
                 The JSON should have two keys: "user_facts" and "conversation_topics".
@@ -77,7 +81,7 @@ class AiBuddyRepository(application: Application) {
         )
     }
 
-    suspend fun generateContent(userMessage: String): Result<String> {
+    suspend fun generateContent(userMessage: String, conversationHistory: List<String>): Result<String> {
         return try {
             val userFacts = userFactDao.getAllUserFacts().first()
             val conversationTopics = conversationTopicDao.getAllConversationTopics().first()
@@ -92,8 +96,14 @@ class AiBuddyRepository(application: Application) {
                 conversationTopics.forEach { context.append("- ${it.topic}: ${it.keywords}\n") }
             }
 
-            val prompt = if (context.isNotEmpty()) {
-                "Context:\n$context\nUser Message: $userMessage"
+            val history = if (conversationHistory.isNotEmpty()) {
+                "\n\nConversation History:\n${conversationHistory.joinToString("\n")}"
+            } else {
+                ""
+            }
+
+            val prompt = if (context.isNotEmpty() || history.isNotEmpty()) {
+                "Context:\n$context$history\n\nUser Message: $userMessage"
             } else {
                 userMessage
             }
@@ -103,10 +113,46 @@ class AiBuddyRepository(application: Application) {
             
             extractAndSaveContext(responseText)
 
-            val cleanResponse = responseText.substringBefore("<!--JSON_START-->").trim()
-            Result.success(cleanResponse)
+            Result.success(responseText)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    suspend fun searchAndGenerateContent(query: String, userMessage: String): Result<String> {
+        return try {
+            val searchResults = performSearch(query)
+            val newPrompt = "Based on the following search results, answer the user's question:\n\n$searchResults\n\nUser's question: $userMessage"
+            val response = generativeModel.generateContent(newPrompt)
+            val responseText = response.text ?: "I couldn't find any information on that."
+            
+            extractAndSaveContext(responseText)
+
+            Result.success(responseText)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun performSearch(query: String): String {
+        return try {
+            val encodedQuery = URLEncoder.encode(query, "UTF-8")
+            val url = URL("https://api.duckduckgo.com/?q=$encodedQuery&format=json")
+            val result = url.readText()
+            val json = JSONObject(result)
+            val abstract = json.optString("AbstractText", "No summary available.")
+            val results = json.optJSONArray("RelatedTopics")
+            val snippets = StringBuilder()
+            if (results != null) {
+                for (i in 0 until minOf(3, results.length())) {
+                    val item = results.getJSONObject(i)
+                    snippets.append(item.optString("Text", ""))
+                    snippets.append("\n")
+                }
+            }
+            "$abstract\n\n$snippets"
+        } catch (e: Exception) {
+            "Error performing search: ${e.message}"
         }
     }
 
